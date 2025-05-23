@@ -191,12 +191,21 @@ def main():
             stuck.append(f"• {cid}: {age_bdays} business days unchanged "
                          f"(last {last_code} @ {last_time_str})")
 
-    if stuck:
-        alert("⚠️ Matkahuolto alert:\n" + "\n".join(stuck))
-        logging.info("Sent alert for %d stuck shipment(s)", len(stuck))
+    moving_ids = [cid for cid, (_, code) in cache.items()
+                  if code not in FINAL_OK_CODES]
+    moving_total = len(moving_ids)
+    stuck_ids    = [line.split()[1].rstrip(':') for line in stuck]  # extract IDs
+    stuck_total  = len(stuck_ids)
+
+    header = f"{moving_total} package{'s' if moving_total!=1 else ''} currently in transit 📦"
+
+    if stuck_total == 0:
+        alert(f"{header}\n✅ All those packages are on their way as normal.")
+        logging.info("Sent green summary (%d moving, none stuck)", moving_total)
     else:
-        alert("✅ All the packages are on their way as normal.")
-        logging.info("All consignments moving or in final state")
+        alert(f"{header}\n⚠️ {stuck_total} package(s) may be delayed:\n"
+              + "\n".join(f"• {cid}" for cid in stuck_ids))
+        logging.info("Sent alert for %d stuck shipment(s)", stuck_total)
 
 # ────────────────────────── entry ───────────────────────────────────────
 if __name__ == "__main__":
