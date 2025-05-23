@@ -59,7 +59,7 @@ def business_days_between(a: datetime, b: datetime) -> int:
     """Finnish business days strictly between a and b (inclusive on start)."""
     delta = cal.get_working_days_delta(a.date(), b.date())
     days  = delta if isinstance(delta, int) else delta.days
-    return max(days - 1, 0) 
+    return max(days - 1, 0)
 
 def fetch_window(days_back: int):
     to_dt   = datetime.now(timezone.utc)
@@ -191,10 +191,16 @@ def main():
             stuck.append(f"• {cid}: {age_bdays} business days unchanged "
                          f"(last {last_code} @ {last_time_str})")
 
-    moving_ids = [cid for cid, (_, code) in cache.items()
-                  if code not in FINAL_OK_CODES]
+    # Replaced: count from cache → count from current run's consignments
+    moving_ids = []
+    for c in consignments:
+        cid = (c.get("id") or c.get("ShipmentNumber") or c.get("shipmentId") or
+               c.get("shipmentNumber") or c.get("ParcelNumber") or c.get("parcelNumber"))
+        _, code = latest_event(c)
+        if cid and code and code not in FINAL_OK_CODES:
+            moving_ids.append(cid)
     moving_total = len(moving_ids)
-    stuck_ids    = [line.split()[1].rstrip(':') for line in stuck]  # extract IDs
+    stuck_ids    = [line.split()[1].rstrip(':') for line in stuck]
     stuck_total  = len(stuck_ids)
 
     header = f"{moving_total} package{'s' if moving_total!=1 else ''} currently in transit 📦"
