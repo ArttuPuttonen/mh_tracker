@@ -16,9 +16,9 @@ jobs:
       MH_PASS:             ${{ secrets.MH_PASS }}
       TELEGRAM_TOKEN:      ${{ secrets.TELEGRAM_TOKEN }}
       TELEGRAM_CHAT_ID:    ${{ secrets.TELEGRAM_CHAT_ID }}
-      LOOKBACK_DAYS:       '5'
+      LOOKBACK_DAYS:       '8'
       STALE_BUSINESS_DAYS: '1'
-      MH_TIMEOUT:          '90'
+      MH_TIMEOUT:          '180'
 
     steps:
       - uses: actions/checkout@v4

@@ -87,29 +87,19 @@ def extract_consignments(blob):
     Normalise Matkahuolto's 4 possible response shapes into a list of
     consignment-like dicts with an 'events':[ … ] key.
     """
-    # 1. blob already a list of consignment dicts?
     if isinstance(blob, list) and blob and isinstance(blob[0], dict) and "events" in blob[0]:
         return blob
-
-    # 2. {"consignments":[…]} or {"MHTrackingResults":[…]}
     if isinstance(blob, dict):
         for key in ("consignments", "MHTrackingResults"):
             if key in blob and isinstance(blob[key], list):
                 return blob[key]
-
-        # 3. dict-of-dicts  {"MH67…": {events:[…]}, …}
         if all(isinstance(v, dict) for v in blob.values()):
             return list(blob.values())
-
-        # 4. flat list of **events** inside some wrapper → collapse below
         for v in blob.values():
             if isinstance(v, list) and v and "eventCode" in v[0]:
                 return collapse_events_to_consignments(v)
-
-    # 5. top-level flat list of **events**
     if isinstance(blob, list) and blob and "eventCode" in blob[0]:
         return collapse_events_to_consignments(blob)
-
     return []
 
 def collapse_events_to_consignments(events):
@@ -129,7 +119,6 @@ def collapse_events_to_consignments(events):
     return [{"ShipmentNumber": k, "events": [v]} for k, v in latest.items()]
 
 def latest_event(consignment):
-    """Return (timestamp, code) of the consignment's latest event."""
     evts = consignment.get("events") or consignment.get("MHTrackingEvents") or []
     if not evts:
         return None, None
@@ -179,6 +168,12 @@ def main():
         if not last_time_str:
             continue
 
+        last = None
+        evts = c.get("events") or c.get("MHTrackingEvents") or []
+        if evts:
+            # find the latest event dict
+            last = max(evts, key=lambda e: e.get("eventTime"))
+
         last_time = datetime.fromisoformat(last_time_str)
         cached_time_str, _ = cache.get(cid, (None, None))
         if cached_time_str != last_time_str:
@@ -188,29 +183,36 @@ def main():
                                           datetime.now(last_time.tzinfo))
 
         if age_bdays >= STALE_D and (last_code not in FINAL_OK_CODES):
-            stuck.append(f"• {cid}: {age_bdays} business days unchanged "
-                         f"(last {last_code} @ {last_time_str})")
+            # capture cid and sender reference
+            ref = last.get("senderReference") or last.get("SenderReference") or ""
+            stuck.append((cid, ref))
 
-    # Replaced: count from cache → count from current run's consignments
+    # count in-transit from current run
     moving_ids = []
     for c in consignments:
-        cid = (c.get("id") or c.get("ShipmentNumber") or c.get("shipmentId") or
+        cid = (c.get("id") or c.get("ShipmentNumber") or c.get("ShipmentId") or
                c.get("shipmentNumber") or c.get("ParcelNumber") or c.get("parcelNumber"))
         _, code = latest_event(c)
         if cid and code and code not in FINAL_OK_CODES:
             moving_ids.append(cid)
     moving_total = len(moving_ids)
-    stuck_ids    = [line.split()[1].rstrip(':') for line in stuck]
-    stuck_total  = len(stuck_ids)
 
-    header = f"{moving_total} package{'s' if moving_total!=1 else ''} currently in transit 📦"
+    stuck_total = len(stuck)
+
+    header = f"{moving_total} package{'s' if moving_total != 1 else ''} currently in transit 📦"
 
     if stuck_total == 0:
         alert(f"{header}\n✅ All those packages are on their way as normal.")
         logging.info("Sent green summary (%d moving, none stuck)", moving_total)
     else:
+        lines = []
+        for cid, ref in stuck:
+            if ref:
+                lines.append(f"• {cid} (ref {ref})")
+            else:
+                lines.append(f"• {cid}")
         alert(f"{header}\n⚠️ {stuck_total} package(s) may be delayed:\n"
-              + "\n".join(f"• {cid}" for cid in stuck_ids))
+              + "\n".join(lines))
         logging.info("Sent alert for %d stuck shipment(s)", stuck_total)
 
 # ────────────────────────── entry ───────────────────────────────────────
