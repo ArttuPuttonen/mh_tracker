@@ -9,7 +9,6 @@ Matkahuolto daily tracker → Telegram alert
     2. {"consignments":[…]} or {"MHTrackingResults":[…]}
     3. {"MH67…":{"events":[…]}, "MH30…":{…}}  (dict-of-dicts)
     4. flat list of single events  [{eventCode…},{eventCode…}]  ← NEW
-• Keeps a tiny SQLite cache so each consignment is tracked forever.
 • Sends ONE Telegram message per run:
      ✅  All the packages are on their way as normal.
      ⚠️  List every shipment whose status hasn’t changed for
@@ -17,7 +16,7 @@ Matkahuolto daily tracker → Telegram alert
          and whose last event code is **not** in {55, 56, 57, 60}.
 """
 
-import os, sys, sqlite3, logging
+import os, sys, logging
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -42,7 +41,6 @@ STALE_D   = int(os.getenv("STALE_BUSINESS_DAYS", "2"))
 REQ_TIMEOUT = int(os.getenv("MH_TIMEOUT", "90"))
 ENDPOINT  = os.getenv("MH_ENDPOINT",
            "https://extservices.matkahuolto.fi/mpaketti/public/tracking")
-DB_PATH   = os.getenv("DB_PATH", "mh_cache.sqlite")
 
 FINAL_OK_CODES = {"55", "56", "57", "60"}
 
@@ -125,34 +123,12 @@ def latest_event(consignment):
     last = max(evts, key=lambda e: e["eventTime"])
     return last["eventTime"], (last.get("eventCode") or last.get("event_code"))
 
-# ────────────────────────── SQLite cache ───────────────────────────────
-def ensure_db():
-    with sqlite3.connect(DB_PATH) as con:
-        con.execute("""CREATE TABLE IF NOT EXISTS shipments(
-                          id TEXT PRIMARY KEY,
-                          last_time TEXT,
-                          last_status TEXT)""")
-        con.commit()
-
-def read_cache():
-    with sqlite3.connect(DB_PATH) as con:
-        cur = con.cursor()
-        cur.execute("SELECT id, last_time, last_status FROM shipments")
-        return {r[0]: (r[1], r[2]) for r in cur.fetchall()}
-
-def upsert(cid, tstamp, status):
-    with sqlite3.connect(DB_PATH) as con:
-        con.execute("""INSERT OR REPLACE INTO shipments(id, last_time, last_status)
-                       VALUES (?,?,?)""", (cid, tstamp, status))
-        con.commit()
-
+# ────────────────────────── Telegram alert ────────────────────────────
 def alert(text: str):
     bot.send_message(chat_id=TG_CHAT, text=text)
 
 # ────────────────────────── main ───────────────────────────────────────
 def main():
-    ensure_db()
-    cache = read_cache()
     stuck = []
 
     data = fetch_window(LOOKBACK)
@@ -175,10 +151,6 @@ def main():
             last = max(evts, key=lambda e: e.get("eventTime"))
 
         last_time = datetime.fromisoformat(last_time_str)
-        cached_time_str, _ = cache.get(cid, (None, None))
-        if cached_time_str != last_time_str:
-            upsert(cid, last_time_str, last_code)
-
         age_bdays = business_days_between(last_time,
                                           datetime.now(last_time.tzinfo))
 
