@@ -2,6 +2,8 @@
 
 A Python-based automated monitoring system that tracks Matkahuolto shipments and sends intelligent alerts via Telegram when packages experience delays.
 
+![Telegram Bot in Action](images/Bot_in_action.png)
+
 ## Overview
 
 This tool integrates with the Matkahuolto API to monitor package shipments in real-time. It automatically detects stale shipments based on Finnish business day calculations and sends consolidated Telegram notifications.
